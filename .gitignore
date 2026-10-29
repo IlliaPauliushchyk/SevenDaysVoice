@@ -1,0 +1,9 @@
+venv/
+models/
+generated_audio/
+logs/
+data/*.sqlite
+data/*.json
+__pycache__/
+*.pyc
+.pytest_cache/

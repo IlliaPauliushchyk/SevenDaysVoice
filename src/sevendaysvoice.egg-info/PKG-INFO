@@ -1,0 +1,5 @@
+Metadata-Version: 2.4
+Name: sevendaysvoice
+Version: 0.1.0
+Summary: Локальная озвучка мода «7 Дней Лета: Lost Alpha»
+Requires-Python: >=3.12

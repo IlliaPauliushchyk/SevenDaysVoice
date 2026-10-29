@@ -1,0 +1,12 @@
+[project]
+name = "sevendaysvoice"
+version = "0.1.0"
+description = "Локальная озвучка мода «7 Дней Лета: Lost Alpha»"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"
