@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import sqlite3
 from collections import Counter
 from pathlib import Path
@@ -11,6 +12,13 @@ from sdv.rpyc_reader import load_ast
 
 _BLOCK_ATTRS = ("block",)
 _SEQ_ATTRS = ("entries", "items")
+# Персонаж «Голос» в сценарии пишется `voice "текст"`. То же слово Ren'Py
+# резервирует под команду воспроизведения файла, поэтому в .rpyc это не Say.
+_VOICE_DIALOGUE = re.compile(
+    r"""^voice\s+(?P<q>\"\"\"|'''|"|')(?P<body>.*)(?P=q)\s*$""",
+    re.DOTALL,
+)
+_AUDIO_SUFFIXES = (".ogg", ".mp3", ".wav", ".opus")
 
 
 def _text(value) -> str:
@@ -62,6 +70,42 @@ def _add_say(node, identifier: str, index: int, label: str, source_name: str, ac
     )
 
 
+def _voice_dialogue(node) -> str | None:
+    """Текст реплики «Голос», если строка не указывает на готовый звуковой файл."""
+    line = _text(getattr(node, "line", "") or "").strip()
+    match = _VOICE_DIALOGUE.match(line)
+    if not match:
+        return None
+    body = match.group("body").strip()
+    folded = body.lower()
+    if not body or folded.endswith(_AUDIO_SUFFIXES) or "/" in body or "\\" in body:
+        return None
+    return body
+
+
+def _add_voice_line(text: str, identifier: str, index: int, label: str, source_name: str, node, acc: list[dict]) -> None:
+    say_id = identifier
+    if index:
+        say_id = f"{identifier}_{index}"
+    filename = _text(getattr(node, "filename", "") or source_name)
+    line_number = getattr(node, "linenumber", 0) or 0
+    if not say_id:
+        digest = hashlib.sha1(f"{filename}:{line_number}:voice:{text}".encode("utf-8")).hexdigest()[:12]
+        say_id = f"missing_{digest}"
+    acc.append(
+        {
+            "id": say_id,
+            "speaker": "voice",
+            "text_raw": text,
+            "filename": filename,
+            "line_number": int(line_number),
+            "label": label,
+            "scope": scope_of(filename or source_name),
+            "identifier_missing": not bool(identifier),
+        }
+    )
+
+
 def _walk(nodes, label: str, source_name: str, acc: list[dict], seen: set[int]) -> None:
     if not isinstance(nodes, (list, tuple)):
         return
@@ -90,6 +134,9 @@ def _walk(nodes, label: str, source_name: str, acc: list[dict], seen: set[int]) 
                     continue
                 if _kind(child) == "Say":
                     _add_say(child, identifier, say_index, label, source_name, acc)
+                    say_index += 1
+                elif _kind(child) == "UserStatement" and (spoken := _voice_dialogue(child)) is not None:
+                    _add_voice_line(spoken, identifier, say_index, label, source_name, child, acc)
                     say_index += 1
                 else:
                     _walk([child], label, source_name, acc, seen)
